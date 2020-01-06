@@ -5,19 +5,17 @@
 xdv_handle _current_handle;
 XENOM_ADD_INTERFACE()
 {
-	xvar var = XdvExe("!qxnm.addv -name:Threads -title:thread -type:txta -callback:!thrdv.cbthrdv");
+	xvar var = XdvExe("!qxnm.add_viewer -name:Threads -title:thread -callback:!thrdv.cbthrdv");
 	_current_handle = handlevar(var);
-	XdvExe("!qxnm.chkable -handle:%x", _current_handle);
+	XdvExe("!qxnm.set_checkable -handle:%x", _current_handle);
 
 	return _current_handle;
 }
 
 EXTS_FUNC(cbthrdv)
 {
-	char * status = XdvValue(argv, argc, "status", nullptr);
-	char * handle = XdvValue(argv, argc, "handle", nullptr);
-	char * str = XdvValue(argv, argc, "str", nullptr);
-	if (strstr(status, "doubleclick"))
+	char * str = argof("str");
+	if (hasarg("status", "pre"))
 	{
 		//XdvExe("!thrdv.threads");
 
@@ -31,7 +29,6 @@ EXTS_FUNC(cbthrdv)
 				unsigned long tid = strtoul(tid_str, &end, 16);
 				if (XdvSelectThread(XdvGetParserHandle(), tid))
 				{
-					printf("test:: select\n");
 					//XdvSuspendThread(XdvGetParserHandle(), tid);
 					XdvExe("!cpuv.printctx");
 					XdvExe("!stackv.printframe");
@@ -40,9 +37,9 @@ EXTS_FUNC(cbthrdv)
 			}
 		}
 	}
-	else if (strstr(status, "Suspend thread"))
+	else if (hasarg("status", "Suspend thread"))
 	{
-		char * tag = XdvValue(argv, argc, "tag", nullptr);
+		char * tag = argof("tag");
 		char * end = nullptr;
 		if (tag)
 		{
@@ -56,9 +53,9 @@ EXTS_FUNC(cbthrdv)
 			}
 		}
 	}
-	else if (strstr(status, "Resume thread"))
+	else if (hasarg("status", "Resume thread"))
 	{
-		char * tag = XdvValue(argv, argc, "tag", nullptr);
+		char * tag = argof("tag");
 		char * end = nullptr;
 		if (tag)
 		{
@@ -72,7 +69,7 @@ EXTS_FUNC(cbthrdv)
 			}
 		}
 	}
-	else if (strstr(status, "Suspend process"))
+	else if (hasarg("status", "Suspend process"))
 	{
 		//XdvUpdateDebuggee(XdvGetParserHandle());
 
@@ -90,7 +87,7 @@ EXTS_FUNC(cbthrdv)
 			XdvExe("!thrdv.threads");
 		}
 	}
-	else if (strstr(status, "Resume process"))
+	else if (hasarg("status", "Resume process"))
 	{
 		XdvUpdateDebuggee(XdvGetParserHandle());
 
@@ -143,11 +140,11 @@ EXTS_FUNC(threads)
 
 EXTS_FUNC(update)
 {
-	XdvExe("!qxnm.ctxmenu -handle:%x -name:Suspend thread", _current_handle);
-	XdvExe("!qxnm.ctxmenu -handle:%x -name:Resume thread", _current_handle);
+	XdvExe("!qxnm.add_command -handle:%x -name:Suspend thread", _current_handle);
+	XdvExe("!qxnm.add_command -handle:%x -name:Resume thread", _current_handle);
 
-	XdvExe("!qxnm.ctxmenu -handle:%x -name:Suspend process", _current_handle);
-	XdvExe("!qxnm.ctxmenu -handle:%x -name:Resume process", _current_handle);
+	XdvExe("!qxnm.add_command -handle:%x -name:Suspend process", _current_handle);
+	XdvExe("!qxnm.add_command -handle:%x -name:Resume process", _current_handle);
 
 	return nullvar();
 }

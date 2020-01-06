@@ -600,16 +600,6 @@ bool WindowsApi::StackTraceEx(unsigned long long bp, unsigned long long ip, unsi
 		return false;
 	}
 
-//#ifdef _WIN64
-//	ctx.Rbp = bp;
-//	ctx.Rsp = sp;
-//	ctx.Rip = ip;
-//#else
-//	ctx.Ebp = (unsigned long)bp;
-//	ctx.Esp = (unsigned long)sp;
-//	ctx.Eip = (unsigned long)ip;
-//#endif
-
 	int i = 0;
 	int cnt = (int)(size_of_stack_frame / sizeof(xdv::architecture::x86::frame::type));
 	for (i = 0; i < cnt; ++i)
@@ -717,7 +707,7 @@ bool WindowsApi::SetBreakPoint(DebugBreakPointId id, unsigned long long ptr)
 	case DebugBreakPointId::SUSPEND_BREAK_POINT_ID:
 		return this->InstallSuspendBreakPoint(ptr);
 
-	case DebugBreakPointId::SOWFTWARE_BREAK_POINT_ID:
+	case DebugBreakPointId::SOFTWARE_BREAK_POINT_ID:
 		return this->InstallSoftwareBreakPoint(ptr);
 
 	case DebugBreakPointId::HARDWARE_BREAK_POINT_ID:
@@ -743,7 +733,46 @@ bool WindowsApi::RestoreBreakPoint(unsigned long long ptr)
 	auto it = break_point_map_.find(ptr);
 	if (it != break_point_map_.end())
 	{
-		if (XdvWriteMemory(XdvGetParserHandle(), (void *)ptr, it->second->bytes, 16))
+		if (it->second->id == DebugBreakPointId::HARDWARE_BREAK_POINT_ID)
+		{
+			std::map<unsigned long, unsigned long long> thread_map;
+			Threads(thread_map);
+
+			unsigned long cnt = 0;
+			for (auto it : thread_map)
+			{
+				HANDLE thread_handle = OpenThread(MAXIMUM_ALLOWED, FALSE, it.first);
+				if (!thread_handle)
+				{
+					return false;
+				}
+				std::shared_ptr<void> handle_closer(thread_handle, CloseHandle);
+
+				CONTEXT ctx = { 0, };
+				ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+
+				if (ctx.Dr0 == 0)
+				{
+					ctx.Dr0 = 0;
+				}
+				else if (ctx.Dr1 == 0)
+				{
+					ctx.Dr1 = 0;
+				}
+				else if (ctx.Dr2 == 0)
+				{
+					ctx.Dr2 = 0;
+				}
+				else if (ctx.Dr3 == 0)
+				{
+					ctx.Dr3 = 0;
+				}
+				ctx.Dr7 = (1 << 0) | (1 << 2) | (1 << 4) | (1 << 6);
+
+				::SetThreadContext(thread_handle, &ctx);
+			}
+		}
+		else if (XdvWriteMemory(XdvGetParserHandle(), (void *)ptr, it->second->bytes, 16))
 		{
 			return true;
 		}
@@ -824,6 +853,7 @@ bool InstallSuspendPoint(unsigned long long ptr)
 	return false;
 }
 
+void SuspendCallback(unsigned long long ptr);
 bool WindowsApi::InstallSuspendBreakPoint(unsigned long long ptr)
 {
 	break_point_ptr bp_ptr = new break_point;
@@ -836,6 +866,7 @@ bool WindowsApi::InstallSuspendBreakPoint(unsigned long long ptr)
 	if (InstallSuspendPoint(ptr))
 	{
 		break_point_map_.insert(std::pair<unsigned long long, break_point_ptr>(ptr, bp_ptr));
+		std::thread * bp = new std::thread(SuspendCallback, ptr);
 		return true;
 	}
 
@@ -857,7 +888,7 @@ bool InstallSoftwarePoint(unsigned long long ptr)
 bool WindowsApi::InstallSoftwareBreakPoint(unsigned long long ptr)
 {
 	break_point_ptr bp_ptr = new break_point;
-	bp_ptr->id = DebugBreakPointId::SOWFTWARE_BREAK_POINT_ID;
+	bp_ptr->id = DebugBreakPointId::SOFTWARE_BREAK_POINT_ID;
 	if (XdvReadMemory(XdvGetParserHandle(), ptr, bp_ptr->bytes, 16) == 0)
 	{
 		return false;
@@ -882,19 +913,78 @@ bool WindowsApi::InstallHardwareBreakPoint(unsigned long long ptr)
 		return false;
 	}
 
-	HANDLE thread_handle = OpenThread(MAXIMUM_ALLOWED, FALSE, this->ThreadId());
-	if (!thread_handle)
-	{
-		return false;
-	}
-	std::shared_ptr<void> handle_closer(thread_handle, CloseHandle);
+	std::map<unsigned long, unsigned long long> thread_map;
+	Threads(thread_map);
 
-	CONTEXT ctx = { 0, };
-	ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-	ctx.Dr7 = (1 << 0) | (1 << 2) | (1 << 4) | (1 << 6);
-	if (::SetThreadContext(thread_handle, &ctx))
+	unsigned long cnt = 0;
+	for (auto it : thread_map)
 	{
-		printf("test:: install H/W bp, %d(%x)=>%I64x\n", this->ThreadId(), this->ThreadId(), ptr);
+		HANDLE thread_handle = OpenThread(MAXIMUM_ALLOWED, FALSE, it.first);
+		if (!thread_handle)
+		{
+			return false;
+		}
+		std::shared_ptr<void> handle_closer(thread_handle, CloseHandle);
+
+		CONTEXT ctx = { 0, };
+		ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+		if (!::GetThreadContext(thread_handle, &ctx))
+		{
+			return false;
+		}
+
+#ifdef _WIN64
+		if (ctx.Dr0 == 0)
+		{
+			ctx.Dr0 = ptr;
+		}
+		else if (ctx.Dr1 == 0)
+		{
+			ctx.Dr1 = ptr;
+		}
+		else if (ctx.Dr2 == 0)
+		{
+			ctx.Dr2 = ptr;
+		}
+		else if (ctx.Dr3 == 0)
+		{
+			ctx.Dr3 = ptr;
+		}
+		else
+		{
+			ctx.Dr0 = ptr;
+		}
+#else
+		if (ctx.Dr0 == 0)
+		{
+			ctx.Dr0 = (unsigned long)ptr;
+		}
+		else if (ctx.Dr1 == 0)
+		{
+			ctx.Dr1 = (unsigned long)ptr;
+		}
+		else if (ctx.Dr2 == 0)
+		{
+			ctx.Dr2 = (unsigned long)ptr;
+		}
+		else if (ctx.Dr3 == 0)
+		{
+			ctx.Dr3 = (unsigned long)ptr;
+		}
+		else
+		{
+			ctx.Dr0 = (unsigned long)ptr;
+		}
+#endif
+		ctx.Dr7 = (1 << 0) | (1 << 2) | (1 << 4) | (1 << 6);
+		if (::SetThreadContext(thread_handle, &ctx))
+		{
+			++cnt;
+		}
+	}
+
+	if (cnt)
+	{
 		break_point_map_.insert(std::pair<unsigned long long, break_point_ptr>(ptr, bp_ptr));
 		return true;
 	}

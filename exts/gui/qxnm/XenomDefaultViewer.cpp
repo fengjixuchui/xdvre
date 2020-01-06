@@ -4,7 +4,7 @@
 #include "XenomTextViewer.h"
 
 XenomDefaultViewer::XenomDefaultViewer()
-	: current_handle_(0), is_open_(false), worker_(nullptr), checkable_(false), id_(xdv::viewer::id::TEXT_VIEWER_A)
+	: current_handle_(0), is_open_(false), worker_(nullptr), checkable_(false), id_(xdv::viewer::id::DEFAULT_TEXT_VIEWER)
 {
 }
 
@@ -73,23 +73,23 @@ void XenomDefaultViewer::AddViewer()
 	xvar var;
 	switch (id_)
 	{
-	case xdv::viewer::id::TEXT_VIEWER_A:
-		var = XdvExe("!qxnm.addtxtv -handle:%x -title:%s", current_handle_, title_str_.c_str());
+	case xdv::viewer::id::DEFAULT_TEXT_VIEWER:
+		var = XdvExe("!qxnm.add_txtv -handle:%x -title:%s", current_handle_, title_str_.c_str());
 		worker_ = (IWorker *)ptrvar(var);
 		break;
 
-	case xdv::viewer::id::TEXT_VIEWER_B:
-		var = XdvExe("!qxnm.addtxtv -handle:%x -title:%s -type:txtb", current_handle_, title_str_.c_str());
+	case xdv::viewer::id::EVENT_BASE_TEXT_VIEWER:
+		var = XdvExe("!qxnm.add_txtv -handle:%x -title:%s -type:event", current_handle_, title_str_.c_str());
 		worker_ = (IWorker *)ptrvar(var);
 		break;
 
-	case xdv::viewer::id::TEXT_VIEWER_C:
-		var = XdvExe("!qxnm.addtxtv -handle:%x -title:%s -type:txtc", current_handle_, title_str_.c_str());
+	case xdv::viewer::id::TEXT_VIEWER_DASM:
+		var = XdvExe("!qxnm.add_txtv -handle:%x -title:%s -type:dasm", current_handle_, title_str_.c_str());
 		worker_ = (IWorker *)ptrvar(var);
 		break;
 
-	case xdv::viewer::id::COMMAND_VIEWER_A:
-		var = XdvExe("!qxnm.addcmdv -handle:%x -title:%s -type:txta", current_handle_, title_str_.c_str());
+	case xdv::viewer::id::COMMAND_VIEWER:
+		var = XdvExe("!qxnm.add_cmdv -handle:%x -title:%s", current_handle_, title_str_.c_str());
 		worker_ = (IWorker *)ptrvar(var);
 		break;
 	}
@@ -129,23 +129,23 @@ bool XenomDefaultViewer::Update(int status, std::string str)
 	sprintf_s(handle, sizeof(handle), "%x", current_handle_);
 	switch (status)
 	{
-	case xdv::status::XENOM_UPDATE_STATUS_UP: // wheel up
+	case xdv::status::XENOM_UPDATE_STATUS_UP:
 		command += " -status:up";
 		command += " -handle:";
 		command += handle;
 		XdvExe((char *)command.c_str());
 		break;
 
-	case xdv::status::XENOM_UPDATE_STATUS_DOWN: // wheel down
+	case xdv::status::XENOM_UPDATE_STATUS_DOWN:
 		command += " -status:down";
 		command += " -handle:";
 		command += handle;
 		XdvExe((char *)command.c_str());
 		break;
 
-	case xdv::status::XENOM_UPDATE_STATUS_DOUBLE_CLICK: // mouse double click
+	case xdv::status::XENOM_UPDATE_STATUS_PRE_EVENT:
 	{
-		command += " -status:doubleclick";
+		command += " -status:pre";
 		command += " -handle:";
 		command += handle;
 		if (str.size())
@@ -154,12 +154,12 @@ bool XenomDefaultViewer::Update(int status, std::string str)
 			command += str.c_str();
 		}
 		XdvExe((char *)command.c_str());
-	}
 		break;
+	}
 
-	case xdv::status::XENOM_UPDATE_STATUS_PRE_EVENT: 
+	case xdv::status::XENOM_UPDATE_STATUS_DOUBLE_CLICK_POST_EVENT: // mouse double click
 	{
-		command += " -status:pre_event";
+		command += " -status:dc";
 		command += " -handle:";
 		command += handle;
 		if (str.size())
@@ -168,24 +168,10 @@ bool XenomDefaultViewer::Update(int status, std::string str)
 			command += str.c_str();
 		}
 		XdvExe((char *)command.c_str());
+		break;
 	}
-	break;
 
-	case xdv::status::XENOM_UPDATE_STATUS_POST_EVENT:
-	{
-		command += " -status:post_event";
-		command += " -handle:";
-		command += handle;
-		if (str.size())
-		{
-			command += " -str:";
-			command += str.c_str();
-		}
-		XdvExe((char *)command.c_str());
-	}
-	break;
-
-	case xdv::status::XENOM_UPDATE_STSTUS_BACKSPACE: // mouse double click
+	case xdv::status::XENOM_UPDATE_STSTUS_BACKSPACE:
 	{
 		command += " -status:backspace";
 		command += " -handle:";
@@ -196,10 +182,10 @@ bool XenomDefaultViewer::Update(int status, std::string str)
 			command += str.c_str();
 		}
 		XdvExe((char *)command.c_str());
+		break;
 	}
-	break;
 
-	case xdv::status::XENOM_UPDATE_STSTUS_SPACE: // mouse double click
+	case xdv::status::XENOM_UPDATE_STSTUS_SPACE_POST_EVENT:
 	{
 		command += " -status:space";
 		command += " -handle:";
@@ -210,8 +196,8 @@ bool XenomDefaultViewer::Update(int status, std::string str)
 			command += str.c_str();
 		}
 		XdvExe((char *)command.c_str());
+		break;
 	}
-	break;
 
 	case xdv::status::id::XENOM_UPDATE_STATUS_SHORTCUT:
 		command += " -status:";

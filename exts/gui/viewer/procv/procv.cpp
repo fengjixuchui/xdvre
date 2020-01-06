@@ -4,9 +4,9 @@
 xdv_handle _current_handle = 0;
 XENOM_ADD_INTERFACE()
 {
-	xvar var = XdvExe("!qxnm.addv -name:Procedure -title:subroutine -callback:!procv.cbprocv -type:txtc");
+	xvar var = XdvExe("!qxnm.add_viewer -name:Procedure -title:subroutine -callback:!procv.cbprocv -type:event");
 	_current_handle = handlevar(var);
-	XdvExe("!qxnm.chkable -handle:%x", _current_handle);
+	XdvExe("!qxnm.set_checkable -handle:%x", _current_handle);
 
 	return _current_handle;
 }
@@ -20,7 +20,21 @@ std::map<unsigned long long, xdv::architecture::x86::block::id> _ptr_map;
 
 std::mutex _ref_map_mutex;
 std::mutex _analyze_map_mutex;
-std::map<unsigned long long, xdv::architecture::x86::block::id>::iterator _current_it;
+std::map<unsigned long long, xdv::architecture::x86::block::id>::iterator _current_it = _ptr_map.end();
+
+std::string PrintSubroutineList();
+void UpdateDisasmViewer()
+{
+	XdvExe("!dasmv.dasm");
+}
+
+void UpdateCurrentViewer()
+{
+	if (_ptr_map.size())
+	{
+		XdvPrintAndClear(_current_handle, PrintSubroutineList(), false);
+	}
+}
 
 // ------------------------------------------------------
 //
@@ -115,7 +129,7 @@ void AnalyzeCallback(IWorker *worker, void *ctx)
 	{
 		XdvFineReferenceValues(ah, ih, begine, (size_t)(end - begine), findReferenceValueCallback, nullptr);
 	}
-	XdvExe("!dasmv.update");
+	UpdateDisasmViewer();
 	XdvPrintLog("xenom:: collect values %I64x-%I64x e", begine, end);
 
 	//
@@ -125,8 +139,9 @@ void AnalyzeCallback(IWorker *worker, void *ctx)
 		XdvAnalyze(ah, ih, begine, (size_t)(end - begine), analyzeCodeBlockCallback, nullptr);
 	}
 	_current_it = _ptr_map.begin();
-	XdvExe("!dasmv.update");
-	XdvExe("!procv.update");
+	UpdateDisasmViewer();
+	UpdateCurrentViewer();
+
 	XdvPrintLog("xenom:: analyze subr %I64x-%I64x e", begine, end);
 	XdvPrintLog("xenom:: analyze subr %I64x-%I64x count %d", begine, end, _ptr_map.size());
 
@@ -140,7 +155,7 @@ EXTS_FUNC(analyze)	// argv[0] = ptr
 					// return nullptr
 					// help
 {
-	unsigned long long ptr = XdvToUll(argv, argc, "ptr");
+	unsigned long long ptr = toullarg("ptr");
 	if (ptr == 0)
 	{
 		return nullvar();
@@ -242,27 +257,25 @@ std::string PrintSubroutineList()
 EXTS_FUNC(cbprocv)	// argv[0] = status
 					// argv[1] = handle
 {
-	char * status = XdvValue(argv, argc, "status", nullptr);
-	char * handle = XdvValue(argv, argc, "handle", nullptr);
-	if (strstr(status, "up"))
+	if (hasarg("status", "up"))
 	{
 		if (_current_it != _ptr_map.begin())
 		{
 			--_current_it;
-			XdvExe("!procv.update");
+			UpdateCurrentViewer();
 		}
 	}
-	else if (strstr(status, "down"))
+	else if (hasarg("status", "down"))
 	{
 		if (_current_it != _ptr_map.end() && IsPrintLine())
 		{
 			++_current_it;
-			XdvExe("!procv.update");
+			UpdateCurrentViewer();
 		}
 	}
-	else if (strstr(status, "doubleclick"))
+	else if (hasarg("status", "pre"))
 	{
-		char * str = XdvValue(argv, argc, "str", nullptr);
+		char * str = argof("str");
 		std::vector<std::string> np = XdvSplit(str, "\\s+");
 		std::vector<std::string> filter = XdvSplit(np[0], "[+-]+");
 		unsigned long long result[30] = { 0, };

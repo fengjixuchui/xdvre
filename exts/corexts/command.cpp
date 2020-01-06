@@ -13,7 +13,13 @@ size_t XxcnArgv(char *args, char * argv[])
 	{
 		char * str = (char *)malloc(arg_vector[i].size() + 10);
 		memset(str, 0, arg_vector[i].size() + 10);
-		memcpy(str, arg_vector[i].c_str(), arg_vector[i].size());
+
+		size_t size = arg_vector[i].size();
+		if (arg_vector[i].size() && arg_vector[i].c_str()[arg_vector[i].size() - 1] == ' ')
+		{
+			size -= 1;
+		}
+		memcpy(str, arg_vector[i].c_str(), size);
 		argv[i] = str;
 	}
 
@@ -260,15 +266,3 @@ unsigned long long XdvToUll(char * ull_str)
 
 	return strtoull(ull_str, &end, 16);
 }
-
-unsigned long long XdvToUll(char * argv[], int argc, char * option)
-{
-	char * ull_str = XdvValue(argv, argc, option, nullptr);
-	if (!ull_str)
-	{
-		return 0;
-	}
-
-	return XdvToUll(ull_str);
-}
-

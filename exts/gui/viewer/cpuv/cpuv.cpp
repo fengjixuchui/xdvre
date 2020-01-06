@@ -5,22 +5,15 @@
 xdv_handle _current_handle;
 XENOM_ADD_INTERFACE()
 {
-	xvar var = XdvExe("!qxnm.addv -name:Registers -title:cpu -type:txta -callback:!cpuv.cbcpuv");
+	xvar var = XdvExe("!qxnm.add_viewer -name:Registers -title:cpu -callback:!cpuv.cbcpuv");
 	_current_handle = handlevar(var);
-	XdvExe("!qxnm.chkable -handle:%x", _current_handle);
+	XdvExe("!qxnm.set_checkable -handle:%x", _current_handle);
 
 	return _current_handle;
 }
 
 EXTS_FUNC(cbcpuv)
 {
-	char * status = XdvValue(argv, argc, "status", nullptr);
-	char * handle = XdvValue(argv, argc, "handle", nullptr);
-	if (strstr(status, "doubleclick"))
-	{
-		printf("cpuv:: double click\n");
-	}
-
 	return nullvar();
 }
 
@@ -34,15 +27,15 @@ EXTS_FUNC(getctx)
 EXTS_FUNC(printctx)	// argv[0] = tid, unsigned long type
 					// argv[0] = ctx, xdv::architecture::x86::context::type * type
 {
-	unsigned long long ctx_ptr = XdvToUll(argv, argc, "ctx");
+	unsigned long long ctx_ptr = toullarg("ctx");
 	if (ctx_ptr)
 	{
 		xdv::architecture::x86::context::type * pctx = (xdv::architecture::x86::context::type *)ctx_ptr;
 		_thread_ctx = *pctx;
 	}
-	else if (XdvValue(argv, argc, "tid", nullptr))
+	else if (argof("tid"))
 	{
-		unsigned long tid = (unsigned long)XdvToUll(argv, argc, "tid");
+		unsigned long tid = (unsigned long)toullarg("tid");
 		if (tid)
 		{
 			XdvSelectThread(XdvGetParserHandle(), tid);

@@ -1,4 +1,5 @@
-#include "XenomTextViewer.h"
+#include "qxnm.h"
+
 #include <qpen.h>
 #include <qfontmetrics.h>
 #include <qpainter.h>
@@ -12,21 +13,14 @@ XenomTextViewer::XenomTextViewer(xdv_handle handle, xdv::viewer::id id, QWidget 
 	setWordWrapMode(QTextOption::NoWrap);
 	highlighter_ = new SyntaxHighlighter(this->document());
 
-	navigationArea_ = new NavigationLineArea(this);
-	QObject::connect(this, &QPlainTextEdit::updateRequest, this, &XenomTextViewer::updateBlockArea);
-	updateBlockAreaWidth(0);
+	if (id_ == xdv::viewer::id::TEXT_VIEWER_DASM)
+	{
+		navigationArea_ = new NavigationLineArea(this);
+		QObject::connect(this, &QPlainTextEdit::updateRequest, this, &XenomTextViewer::updateBlockArea);
+		updateBlockAreaWidth(0);
+	}
 
-	QFile f(".\\exts\\css\\style.qss");
-	if (f.exists())
-	{
-		line_color_ = QColor("#000000").light(160);
-		highlighter_->setLightColor();
-	}
-	else
-	{
-		line_color_ = QColor("#509CE4").light(160);
-		highlighter_->setDarkColor();
-	}
+	line_color_ = QColor("#509CE4").light(160);
 }
 
 XenomTextViewer::~XenomTextViewer()
@@ -35,7 +29,7 @@ XenomTextViewer::~XenomTextViewer()
 
 //
 //
-std::string mnString(unsigned long long ptr)
+void mnString(unsigned long long ptr, std::string &mnstr)
 {
 	xdv_handle ah = XdvGetArchitectureHandle();
 	xdv_handle ih = XdvGetParserHandle();
@@ -46,7 +40,7 @@ std::string mnString(unsigned long long ptr)
 		tmp = XdvGetBeforePtr(ah, ih, tmp);
 		if (tmp == 0)
 		{
-			return "";
+			return;
 		}
 	}
 
@@ -56,30 +50,15 @@ std::string mnString(unsigned long long ptr)
 		start = tmp;
 	}
 
-	std::string mnstr;
 	for (int i = 0; i < 4; ++i)
 	{
-		xvar navivar = XdvExe("!dasmv.navistr -ptr:%I64x", start);
-		char * navistr = (char *)ptrvar(navivar);
-		if (navistr)
-		{
-			mnstr += navistr;
-			free(navistr);
-		}
-		
+		XdvExe("!dasmv.navistr -ptr:%I64x -buf:%p", start, &mnstr);
 		if (start == ptr)
 		{
 			mnstr += "> ";
 		}
-
-		xvar codevar = XdvExe("!dasmv.codestr -ptr:%I64x", start);
-		char * codestr = (char *)ptrvar(codevar);
-		if (codestr)
-		{
-			mnstr += codestr;
-			mnstr += "\n";
-			free(navistr);
-		}
+		XdvExe("!dasmv.codestr -ptr:%I64x -buf:%p", start, &mnstr);
+		mnstr += "\n";
 
 		xvar sizevar = XdvExe("!dasmv.codesize -ptr:%I64x", start);
 		unsigned long long size = ullvar(sizevar);
@@ -89,12 +68,15 @@ std::string mnString(unsigned long long ptr)
 		}
 		start += size;
 	}
-
-	return mnstr;
 }
 
 bool XenomTextViewer::event(QEvent *e)
 {
+	if (id_ != xdv::viewer::id::TEXT_VIEWER_DASM)
+	{
+		return QPlainTextEdit::event(e);
+	}
+
 	if (e->type() != QEvent::ToolTip)
 	{
 		return QPlainTextEdit::event(e);
@@ -113,11 +95,35 @@ bool XenomTextViewer::event(QEvent *e)
 #if 1
 	if (!cursor.selectedText().isEmpty())
 	{
-		if (strstr(cursor.selectedText().toStdString().c_str(), "0x"))
+		std::string str = cursor.selectedText().toStdString();
+		const char * text = str.c_str();
+		if (strstr(text, "0x"))
 		{
 			char *end = nullptr;
-			unsigned long long ptr = strtoull(cursor.selectedText().toStdString().c_str(), &end, 16);
-			std::string mnstr = mnString(ptr);
+			unsigned long long ptr = strtoull(text, &end, 16);
+
+			xdv_handle ah = XdvGetArchitectureHandle();
+			xdv_handle ih = XdvGetParserHandle();
+
+			unsigned long long tmp = ptr;
+			for (int i = 0; i < 2; ++i)
+			{
+				tmp = XdvGetBeforePtr(ah, ih, tmp);
+				if (tmp == 0)
+				{
+					return "";
+				}
+			}
+
+			unsigned long long start = ptr;
+			if (tmp)
+			{
+				start = tmp;
+			}
+			
+			std::string mnstr;
+			mnString(ptr, mnstr);
+
 			QToolTip::setFont(QFont("Consolas", 9));
 			QToolTip::showText(he->globalPos(), mnstr.c_str());
 
@@ -146,22 +152,13 @@ void XenomTextViewer::mouseDoubleClickEvent(QMouseEvent *e)
 		return;
 	}
 
-	if (id_ == xdv::viewer::id::TEXT_VIEWER_B)
-	{
-		QTextCursor pre_cursor = textCursor();
-		pre_cursor.select(QTextCursor::LineUnderCursor);
-		viewer->Update(xdv::status::id::XENOM_UPDATE_STATUS_PRE_EVENT, pre_cursor.selectedText().toStdString());
+	QTextCursor pre_cursor = textCursor();
+	pre_cursor.select(QTextCursor::LineUnderCursor);
+	viewer->Update(xdv::status::id::XENOM_UPDATE_STATUS_PRE_EVENT, pre_cursor.selectedText().toStdString());
 
-		QTextCursor post_cursor = textCursor();
-		post_cursor.select(QTextCursor::WordUnderCursor);
-		viewer->Update(xdv::status::id::XENOM_UPDATE_STATUS_DOUBLE_CLICK, post_cursor.selectedText().toStdString());
-	}
-	else
-	{
-		QTextCursor cursor = textCursor();
-		cursor.select(QTextCursor::LineUnderCursor);
-		viewer->Update(xdv::status::id::XENOM_UPDATE_STATUS_DOUBLE_CLICK, cursor.selectedText().toStdString().c_str());
-	}
+	QTextCursor post_cursor = textCursor();
+	post_cursor.select(QTextCursor::WordUnderCursor);
+	viewer->Update(xdv::status::id::XENOM_UPDATE_STATUS_DOUBLE_CLICK_POST_EVENT, post_cursor.selectedText().toStdString());
 }
 
 void XenomTextViewer::wheelEvent(QWheelEvent *e)
@@ -173,7 +170,7 @@ void XenomTextViewer::wheelEvent(QWheelEvent *e)
 		return;
 	}
 
-	if (id_ == xdv::viewer::id::TEXT_VIEWER_A)
+	if (id_ == xdv::viewer::id::DEFAULT_TEXT_VIEWER)
 	{
 		QPlainTextEdit::wheelEvent(e);
 		return;
@@ -198,7 +195,7 @@ void XenomTextViewer::keyPressEvent(QKeyEvent *e)
 		return;
 	}
 
-	if (id_ == xdv::viewer::id::TEXT_VIEWER_A)
+	if (id_ == xdv::viewer::id::DEFAULT_TEXT_VIEWER)
 	{
 		QPlainTextEdit::keyPressEvent(e);
 		return;
@@ -212,22 +209,13 @@ void XenomTextViewer::keyPressEvent(QKeyEvent *e)
 
 	case Qt::Key_Space:
 	{
-		if (id_ == xdv::viewer::id::TEXT_VIEWER_B)
-		{
-			QTextCursor pre_cursor = textCursor();
-			pre_cursor.select(QTextCursor::LineUnderCursor);
-			viewer->Update(xdv::status::id::XENOM_UPDATE_STATUS_PRE_EVENT, pre_cursor.selectedText().toStdString());
+		QTextCursor pre_cursor = textCursor();
+		pre_cursor.select(QTextCursor::LineUnderCursor);
+		viewer->Update(xdv::status::id::XENOM_UPDATE_STATUS_PRE_EVENT, pre_cursor.selectedText().toStdString());
 
-			QTextCursor post_cursor = textCursor();
-			post_cursor.select(QTextCursor::WordUnderCursor);
-			viewer->Update(xdv::status::id::XENOM_UPDATE_STSTUS_SPACE, post_cursor.selectedText().toStdString());
-		}
-		else
-		{
-			QTextCursor cursor = textCursor();
-			cursor.select(QTextCursor::LineUnderCursor);
-			viewer->Update(xdv::status::id::XENOM_UPDATE_STSTUS_SPACE, cursor.selectedText().toStdString().c_str());
-		}
+		QTextCursor post_cursor = textCursor();
+		post_cursor.select(QTextCursor::WordUnderCursor);
+		viewer->Update(xdv::status::id::XENOM_UPDATE_STSTUS_SPACE_POST_EVENT, post_cursor.selectedText().toStdString());
 
 		break;
 	}
@@ -282,8 +270,11 @@ void XenomTextViewer::resizeEvent(QResizeEvent *e)
 {
 	QPlainTextEdit::resizeEvent(e);
 
-	QRect cr = contentsRect();
-	navigationArea_->setGeometry(QRect(cr.left(), cr.top(), blockAreaWidth(), cr.height()));
+	if (id_ == xdv::viewer::id::TEXT_VIEWER_DASM && navigationArea_)
+	{
+		QRect cr = contentsRect();
+		navigationArea_->setGeometry(QRect(cr.left(), cr.top(), blockAreaWidth(), cr.height()));
+	}
 }
 
 // -------------------------------------------------
@@ -307,7 +298,6 @@ void XenomTextViewer::syntaxHighlight()
 	selection.cursor = textCursor();
 	selection.cursor.clearSelection();
 
-	//
 	//
 	QTextCursor cursor = textCursor();
 	cursor.select(QTextCursor::WordUnderCursor);
@@ -339,7 +329,7 @@ void XenomTextViewer::syntaxHighlight()
 
 // -------------------------------------------------
 //
-void XenomTextViewer::addShortcutAction(char * menu, char * menu_icon, char * name, char * shortcut, char * icon)
+void XenomTextViewer::addCommand(char * plugin_command, char * menu, char * name, char * shortcut)
 {
 	QList<QAction *> actions = this->actions();
 	for (auto action : actions)
@@ -363,31 +353,26 @@ void XenomTextViewer::addShortcutAction(char * menu, char * menu_icon, char * na
 	}
 
 	//
-	//
-	QAction * action = new QAction();
+	PluginAction * action = new PluginAction(plugin_command);
+	if (plugin_command)
+	{
+		xnm * xenom = getXenom();
+		xenom->addPlugin(action, menu);
+	}
+
 	if (shortcut)
 	{
 		char * end = nullptr;
 		unsigned long sc = strtoul(shortcut, &end, 16);
 		if (sc)
 		{
-			action->setShortcut(Qt::CTRL | sc);
+			action->setShortcut(sc);
 		}
-	}
-
-	if (icon)
-	{
-		std::string icon_path = ":/xenom/Resources/";
-		icon_path += icon;
-
-		action->setIcon(QPixmap(icon_path.c_str()));
-		action->setIconVisibleInMenu(true);
 	}
 
 	action->setShortcutContext(Qt::ShortcutContext::WidgetShortcut);
 	action->setText(name);
-	QObject::connect(action, &QAction::triggered, this, &XenomTextViewer::shortcutAction);
-
+	QObject::connect(action, &QAction::triggered, this, &XenomTextViewer::commandAction);
 	if (menu)
 	{
 		QMenu * ctx = nullptr;
@@ -403,15 +388,9 @@ void XenomTextViewer::addShortcutAction(char * menu, char * menu_icon, char * na
 		if (!ctx)
 		{
 			ctx = new QMenu(menu, this);
-			if (menu_icon)
-			{
-				std::string icon_path = ":/xenom/Resources/";
-				icon_path += menu_icon;
-				ctx->setIcon(QPixmap(icon_path.c_str()));
-			}
+			context_menu_vector_.push_back(ctx);
 		}
 		ctx->addAction(action);
-		context_menu_vector_.push_back(ctx);
 	}
 	else
 	{
@@ -419,22 +398,13 @@ void XenomTextViewer::addShortcutAction(char * menu, char * menu_icon, char * na
 	}
 }
 
-void XenomTextViewer::shortcutAction()
+void XenomTextViewer::commandAction()
 {
-	IViewer *viewer = (IViewer *)XdvGetObjectByHandle(viewer_handle_);
-	if (!viewer)
-	{
-		return;
-	}
-
 	QTextCursor cursor = textCursor();
 	cursor.select(QTextCursor::LineUnderCursor);
 
-	QAction * qobj = (QAction*)this->sender();
-	QString str = qobj->text();
-	str += " -tag:";
-	str += cursor.selectedText();
-	viewer->Update(xdv::status::id::XENOM_UPDATE_STATUS_SHORTCUT, str.toStdString().c_str());
+	PluginAction * plugin = (PluginAction*)this->sender();
+	plugin->commandAction(viewer_handle_, cursor.selectedText());
 }
 
 int XenomTextViewer::blockAreaWidth()
@@ -474,11 +444,9 @@ void XenomTextViewer::updateBlockArea(const QRect &rect, int dy)
 
 void XenomTextViewer::drawBlockPaintEvent(QPaintEvent *event)
 {
-	typedef struct _tag_point
-	{
-		unsigned long long dest;
-		QLine current_line;
-	}point;
+	QTextCursor cursor = textCursor();
+	cursor.select(QTextCursor::LineUnderCursor);
+	unsigned long long current = XdvToUll((char *)cursor.selectedText().toStdString().c_str());
 
 	std::map<unsigned long long, point> points;
 	QTextBlock block = this->document()->firstBlock();
@@ -517,7 +485,7 @@ void XenomTextViewer::drawBlockPaintEvent(QPaintEvent *event)
 
 				if (interval >= blockAreaWidth())
 				{
-					interval = 0;
+					interval = 2;
 				}
 			}
 		}
@@ -528,6 +496,18 @@ void XenomTextViewer::drawBlockPaintEvent(QPaintEvent *event)
 	QVector<QLine> lines;
 	for (auto it : points) // draw line
 	{
+		unsigned char dump[16] = { 0, };
+		if (XdvReadMemory(XdvGetParserHandle(), it.first, dump, 16) == 0)
+		{
+			continue;
+		}
+
+		bool jxx = false;
+		if (!XdvIsJumpCode(XdvGetArchitectureHandle(), it.first, dump, &jxx))
+		{
+			continue;
+		}
+
 		unsigned long long dest = it.second.dest;
 		auto f = points.find(dest);
 		if (f != points.end())
@@ -537,17 +517,29 @@ void XenomTextViewer::drawBlockPaintEvent(QPaintEvent *event)
 			QPoint dp1(src.p1().x(), dest.p1().y());
 			dest.setP1(dp1);
 
+			lines.clear();
 			lines.push_back(src);
 			lines.push_back(dest);
 			lines.push_back(QLine(src.p1(), dest.p1()));
+			lines.push_back(QLine());
+
+			QPen pen;
+			pen.setStyle(Qt::DashLine);
+			pen.setColor(Qt::gray);
+
+			if (current == it.first)
+			{
+				pen.setColor(Qt::blue);
+			}
+
+			QPainter painter(navigationArea_);
+			painter.setPen(pen);
+			painter.drawLines(lines);
 		}
 	}
+}
 
-	QPen pen;
-	pen.setStyle(Qt::DashLine);
-	pen.setColor(Qt::blue);
-
-	QPainter painter(navigationArea_);
-	painter.setPen(pen);
-	painter.drawLines(lines);
+SyntaxHighlighter * XenomTextViewer::Highlighter()
+{
+	return highlighter_;
 }

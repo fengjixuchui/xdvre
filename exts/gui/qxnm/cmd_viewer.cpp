@@ -3,28 +3,28 @@
 #include "XenomWorker.h"
 #include "XenomDefaultViewer.h"
 
-EXTS_FUNC(addtxtv)		// argv = handle
+EXTS_FUNC(add_txtv)		// argv = handle
 						// argv = title
 						// argv = type
 						// return = IWorker ptr
 {
-	char * handle_str = XdvValue(argv, argc, "handle", nullptr);
-	char * title = XdvValue(argv, argc, "title", nullptr);
-	char * type = XdvValue(argv, argc, "type", nullptr);
+	char * handle_str = argof("handle");
+	char * title = argof("title");
+	char * type = argof("type");
 
 	char *end = nullptr;
 	xdv_handle handle = strtoull(handle_str, &end, 16);
 	xnm *xenom = getXenom();
 	XenomDockWidget * dock = new XenomDockWidget(xenom);
 	XenomPlainTextEdit *text_viewer = nullptr;
-	xdv::viewer::id id = xdv::viewer::id::TEXT_VIEWER_A;
-	if (type && strstr(type, "txtb"))
+	xdv::viewer::id id = xdv::viewer::id::DEFAULT_TEXT_VIEWER;
+	if (type && strstr(type, "event"))
 	{
-		id = xdv::viewer::id::TEXT_VIEWER_B;
+		id = xdv::viewer::id::EVENT_BASE_TEXT_VIEWER;
 	}
-	else if (type && strstr(type, "txtc"))
+	else if (type && strstr(type, "dasm"))
 	{
-		id = xdv::viewer::id::TEXT_VIEWER_C;
+		id = xdv::viewer::id::TEXT_VIEWER_DASM;
 	}
 
 	text_viewer = new XenomTextViewer(handle, id);
@@ -38,30 +38,20 @@ EXTS_FUNC(addtxtv)		// argv = handle
 	return ptrvar(new XenomWorker(handle));
 }
 
-EXTS_FUNC(addcmdv)		// argv = handle
+EXTS_FUNC(add_cmdv)		// argv = handle
 						// argv = title
 						// argv = type
 						// return = IWorker ptr
 {
-	char * handle_str = XdvValue(argv, argc, "handle", nullptr);
-	char * title = XdvValue(argv, argc, "title", nullptr);
-	char * type = XdvValue(argv, argc, "type", nullptr);
-
+	char * handle_str = argof("handle");
+	char * title = argof("title");
 	char *end = nullptr;
 	xdv_handle handle = strtoull(handle_str, &end, 16);
 	xnm *xenom = getXenom();
 	XenomDockWidget * dock = new XenomDockWidget(xenom);
 	XenomPlainTextEdit *text_viewer = nullptr;
-	xdv::viewer::id id = xdv::viewer::id::TEXT_VIEWER_A;
-	if (type && strstr(type, "txtb"))
-	{
-		id = xdv::viewer::id::TEXT_VIEWER_B;
-	}
-	else if (type && strstr(type, "txtc"))
-	{
-		id = xdv::viewer::id::TEXT_VIEWER_C;
-	}
 
+	xdv::viewer::id id = xdv::viewer::id::DEFAULT_TEXT_VIEWER;
 	text_viewer = new XenomTextViewer(handle, id);
 	dock->addVbox(new XenomCommandWidget(handle));
 	dock->addVbox(text_viewer);
@@ -73,35 +63,35 @@ EXTS_FUNC(addcmdv)		// argv = handle
 	return ptrvar(new XenomWorker(handle));
 }
 
-EXTS_FUNC(addv)		// argv = obj_string
-					// argv = title 
-					// argv = cb command
-					// argv = type
-					// return = xdv_handle
+EXTS_FUNC(add_viewer)		// argv = obj_string
+							// argv = title 
+							// argv = cb command
+							// argv = type
+							// return = xdv_handle
 {
-	char * name = XdvValue(argv, argc, "name", nullptr);
-	char * title = XdvValue(argv, argc, "title", nullptr);
+	char * name = argof("name");
+	char * title = argof("title");
 	if (!name || !title)
 	{
 		return nullvar();
 	}
 
-	xdv::viewer::id id = xdv::viewer::id::TEXT_VIEWER_A;
-	char *type = XdvValue(argv, argc, "type", nullptr);
-	if (type && strstr(type, "txtb"))
+	xdv::viewer::id id = xdv::viewer::id::DEFAULT_TEXT_VIEWER;
+	char *type = argof("type");
+	if (type && strstr(type, "event"))
 	{
-		id = xdv::viewer::id::TEXT_VIEWER_B;
+		id = xdv::viewer::id::EVENT_BASE_TEXT_VIEWER;
 	}
-	else if (type && strstr(type, "txtc"))
+	else if (type && strstr(type, "cmd"))
 	{
-		id = xdv::viewer::id::TEXT_VIEWER_C;
+		id = xdv::viewer::id::COMMAND_VIEWER;
 	}
-	else if (type && strstr(type, "cmda"))
+	else if (type && strstr(type, "dasm"))
 	{
-		id = xdv::viewer::id::COMMAND_VIEWER_A;
+		id = xdv::viewer::id::TEXT_VIEWER_DASM;
 	}
 
-	char * command = XdvValue(argv, argc, "callback", nullptr);
+	char * command = argof("callback");
 	XenomDefaultViewer *viewer = __add_object(XenomDefaultViewer);
 	xdv_handle handle = XdvGetHandleByObject(viewer);
 	if (viewer)
@@ -115,9 +105,9 @@ EXTS_FUNC(addv)		// argv = obj_string
 	return handlevar(handle);
 }
 
-EXTS_FUNC(chkable)		// argv[0] = handle
+EXTS_FUNC(set_checkable)		// argv[0] = handle
 {
-	char * handle_str = XdvValue(argv, argc, "handle", nullptr);
+	char * handle_str = argof("handle");
 	char *end = nullptr;
 	xdv_handle handle = strtoull(handle_str, &end, 16);
 	XenomDefaultViewer * viewer = (XenomDefaultViewer*)XdvGetObjectByHandle(handle);
@@ -126,26 +116,26 @@ EXTS_FUNC(chkable)		// argv[0] = handle
 	return nullvar();
 }
 
-EXTS_FUNC(ctxmenu)		// argv[0] = handle
-						// argv[1] = name
-						// argv[2] = key
+EXTS_FUNC(add_command)		// argv[0] = handle
+							// argv[1] = name
+							// argv[2] = key
 {
-	char * handle_str = XdvValue(argv, argc, "handle", nullptr);
-	char * menu = XdvValue(argv, argc, "menu", nullptr);
-	char * name = XdvValue(argv, argc, "name", nullptr);
-	char * key = XdvValue(argv, argc, "key", nullptr);
-	char * menu_icon = XdvValue(argv, argc, "mco", nullptr);
-	char * icon = XdvValue(argv, argc, "nco", nullptr);
-
-	if (!handle_str || !name)
+	xdv_handle handle = tohandlearg("handle");
+	if (XdvGetObjectByHandle(handle)->ObjectType() != xdv::object::id::XENOM_VIEWER_OBJECT)
 	{
 		return nullvar();
 	}
 
-	char *end = nullptr;
-	xdv_handle handle = strtoull(handle_str, &end, 16);
-	xnm *xenom = getXenom();
+	char * menu = argof("menu");
+	char * name = argof("name");
+	char * key = argof("key");
+	char * plugin = argof("plugin");
+	if (!name)
+	{
+		return nullvar();
+	}
 
+	xnm *xenom = getXenom();
 	XenomDockWidget * dock = xenom->Viewer(handle);
 	if (!dock)
 	{
@@ -155,16 +145,16 @@ EXTS_FUNC(ctxmenu)		// argv[0] = handle
 	XenomTextViewer * text = (XenomTextViewer *)dock->TextViewer();
 	if (text)
 	{
-		text->addShortcutAction(menu, menu_icon, name, key, icon);
+		text->addCommand(plugin, menu, name, key);
 	}
 
 	return nullvar();
 }
 
-EXTS_FUNC(addtabv)		// argv[0] = va
+EXTS_FUNC(add_tab)		// argv[0] = va
 						// argv[1] = vb
 {
-	char * vaarg = XdvValue(argv, argc, "va", nullptr);
+	char * vaarg = argof("va");
 	char *end = nullptr;
 	xdv_handle va_handle = strtoull(vaarg, &end, 16);
 	if (XdvGetObjectByHandle(va_handle)->ObjectType() != xdv::object::id::XENOM_VIEWER_OBJECT)
@@ -172,7 +162,7 @@ EXTS_FUNC(addtabv)		// argv[0] = va
 		return nullvar();
 	}
 
-	char * vbarg = XdvValue(argv, argc, "vb", nullptr);
+	char * vbarg = argof("vb");
 	xdv_handle vb_handle = strtoull(vbarg, &end, 16);
 	if (XdvGetObjectByHandle(vb_handle)->ObjectType() != xdv::object::id::XENOM_VIEWER_OBJECT)
 	{
@@ -196,9 +186,9 @@ EXTS_FUNC(addtabv)		// argv[0] = va
 	return nullvar();
 }
 
-EXTS_FUNC(raise)		// argv[0] = handle
+EXTS_FUNC(raise_viewer)		// argv[0] = handle
 {
-	char * arg = XdvValue(argv, argc, "handle", nullptr);
+	char * arg = argof("handle");
 	char *end = nullptr;
 	xdv_handle handle = strtoull(arg, &end, 16);
 	if (XdvGetObjectByHandle(handle)->ObjectType() != xdv::object::id::XENOM_VIEWER_OBJECT)
@@ -215,9 +205,9 @@ EXTS_FUNC(raise)		// argv[0] = handle
 	return nullvar();
 }
 
-EXTS_FUNC(addsplitv)		// argv[0] = va
+EXTS_FUNC(add_split)		// argv[0] = va
 {
-	char * vaarg = XdvValue(argv, argc, "va", nullptr);
+	char * vaarg = argof("va");
 	char *end = nullptr;
 	xdv_handle va_handle = strtoull(vaarg, &end, 16);
 	if (XdvGetObjectByHandle(va_handle)->ObjectType() != xdv::object::id::XENOM_VIEWER_OBJECT)
@@ -225,7 +215,7 @@ EXTS_FUNC(addsplitv)		// argv[0] = va
 		return nullvar();
 	}
 
-	char * vbarg = XdvValue(argv, argc, "vb", nullptr);
+	char * vbarg = argof("vb");
 	xdv_handle vb_handle = strtoull(vbarg, &end, 16);
 	if (XdvGetObjectByHandle(vb_handle)->ObjectType() != xdv::object::id::XENOM_VIEWER_OBJECT)
 	{
@@ -245,7 +235,7 @@ EXTS_FUNC(addsplitv)		// argv[0] = va
 		return nullvar();
 	}
 
-	char * area = XdvValue(argv, argc, "area", nullptr);
+	char * area = argof("area");
 	if (strstr(area, "left"))
 	{
 		xenom->splitDockWidget(vb_dock, va_dock, Qt::Orientation::Horizontal);
@@ -266,11 +256,11 @@ EXTS_FUNC(addsplitv)		// argv[0] = va
 	return nullvar();
 }
 
-EXTS_FUNC(linecolor)		// argv[0] = viewer handle
+EXTS_FUNC(change_color)		// argv[0] = viewer handle
 							// argv[1] = line color
 {
-	char * handle_arg = XdvValue(argv, argc, "handle", nullptr);
-	char * line_color = XdvValue(argv, argc, "color", nullptr);
+	char * handle_arg = argof("handle");
+	char * line_color = argof("color");
 	char *end = nullptr;
 	xdv_handle handle = strtoull(handle_arg, &end, 16);
 	if (XdvGetObjectByHandle(handle)->ObjectType() != xdv::object::id::XENOM_VIEWER_OBJECT)
@@ -301,6 +291,49 @@ EXTS_FUNC(linecolor)		// argv[0] = viewer handle
 	QList<QTextEdit::ExtraSelection> extra_selections;
 	extra_selections.append(current_line);
 	text->setExtraSelections(extra_selections);
+
+	return nullvar();
+}
+
+EXTS_FUNC(express_color)		// argv viewer handle
+								// argv color
+								// argv expression
+{
+	char * handle_arg = argof("handle");
+	char *end = nullptr;
+	xdv_handle handle = strtoull(handle_arg, &end, 16);
+	if (XdvGetObjectByHandle(handle)->ObjectType() != xdv::object::id::XENOM_VIEWER_OBJECT)
+	{
+		return nullvar();
+	}
+
+	xnm *xenom = getXenom();
+	XenomDockWidget *dock = xenom->Viewer(handle);
+	if (!dock)
+	{
+		return nullvar();
+	}
+
+	XenomTextViewer * text = (XenomTextViewer *)dock->TextViewer();
+	if (!text)
+	{
+		return nullvar();
+	}
+
+	char * color = argof("color");
+	char * expression = argof("expression");
+	if (color && expression)
+	{
+		char * bold = argof("bold");
+		if (bold)
+		{
+			text->Highlighter()->addHighlightBlock(expression, color, true);
+		}
+		else
+		{
+			text->Highlighter()->addHighlightBlock(expression, color, false);
+		}
+	}
 
 	return nullvar();
 }

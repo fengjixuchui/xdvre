@@ -21,6 +21,8 @@
 
 #include "xdv_sdk.h"
 
+#include "XenomPluginAction.h"
+
 #pragma comment(lib, "corexts.lib")
 
 class xnm : public QMainWindow
@@ -65,9 +67,17 @@ private:
 
 	std::map<xdv_handle, XenomDockWidget *> viewer_table_;
 
+protected:
+	virtual void dragEnterEvent(QDragEnterEvent *e) override;
+	virtual void dropEvent(QDropEvent *e) override;
+
 public:
 	QMenuBar *menuBar();
 	QToolBar *toolBar();
+
+public:
+	QString getFileSignature(QString file_name);
+	bool openFile(QString file_name);
 
 public:
 	void addViewer(xdv_handle handle, XenomDockWidget *dock);
@@ -82,6 +92,8 @@ public:
 	void addViewer(ViewerAction *obj);
 	void addViewMenuAction();
 	void toolbarActionViewerOpen();
+
+	void addPlugin(PluginAction *, QString menu);
 
 	void toolbarActionFileOpen();
 	void toolbarActionProcessOpen();

@@ -3,6 +3,7 @@
 #include <qlibrary.h>
 #include <qfiledialog.h>
 #include <qmessagebox.h>
+#include <qmimedata.h>
 #include <io.h>
 
 xnm * _xenom;
@@ -46,11 +47,11 @@ xnm::xnm(QWidget *parent)
 	menu_debug_ = new QMenu("Debug", menu_bar_);
 	//menu_debug_->setEnabled(false);
 
-	menu_plugin_ = new QMenu("Extentions", menu_bar_);
+	menu_plugin_ = new QMenu("Plugin", menu_bar_);
 	//menu_plugin_->setEnabled(false);
 
 	menu_system_ = new QMenu("Option", menu_bar_);
-	menu_system_->setEnabled(false);
+	//menu_system_->setEnabled(false);
 
 	menu_help_ = new QMenu("Help", menu_bar_);
 	menu_help_->setEnabled(false);
@@ -195,6 +196,8 @@ xnm::xnm(QWidget *parent)
 	QObject::connect(action_debuggee_stepover_, &QAction::triggered, this, &xnm::toolbarActionDebugStepOver);
 
 	QObject::connect(action_system_, &QAction::triggered, this, &xnm::toolbarActionSystemOption);
+
+	this->setAcceptDrops(true);
 }
 
 xnm::~xnm()
@@ -284,7 +287,16 @@ void xnm::loadExts(char *exts_path)
 			IObject *obj = XdvGetObjectByHandle(h);
 			if (obj)
 			{
-				obj->SetModuleName(path);
+				char * d = strstr(fd.name, ".");
+				if (d)
+				{
+					std::string name(fd.name, d);
+					obj->SetModuleName(name);
+				}
+				else
+				{
+					obj->SetModuleName(fd.name);
+				}
 			}
 		}
 	} while (_findnexti64(handle, &fd) == 0);
@@ -351,8 +363,6 @@ void xnm::addViewMenuAction()
 	{
 		std::string menu_name = table[i]->ObjectString();
 		ViewerAction *exts_action = new ViewerAction(table[i]);
-		//exts_action->setIcon(QPixmap(":/xenom/Resources/MonitorBlack.ico"));
-		//exts_action->setIconVisibleInMenu(true);
 
 		exts_action->setObjectName(menu_name.c_str());
 		exts_action->setText(menu_name.c_str());
@@ -390,15 +400,32 @@ void xnm::toolbarActionViewerOpen()
 	}
 }
 
+void xnm::addPlugin(PluginAction *action, QString menu)
+{
+	if (menu.size())
+	{
+		QMenu * m = menu_plugin_->findChild<QMenu *>(menu);
+		if (!m)
+		{
+			m = new QMenu(menu);
+		}
+		m->addAction(action);
+		menu_plugin_->addMenu(m);
+	}
+	else
+	{
+		menu_plugin_->addAction(action);
+	}
+}
+
 // -------------------------------------------
 //
-void xnm::toolbarActionFileOpen()
+QString xnm::getFileSignature(QString file_name)
 {
-	QString file_name = QFileDialog::getOpenFileName(this);
 	QFile file(file_name.toStdString().c_str());
 	if (!file.open(QIODevice::ReadOnly))
 	{
-		return;
+		return "";
 	}
 
 	// get signature
@@ -413,7 +440,12 @@ void xnm::toolbarActionFileOpen()
 		signature += arr.at(i);
 	}
 
-	//
+	return signature;
+}
+
+bool xnm::openFile(QString file_name)
+{
+	QString signature = getFileSignature(file_name);
 	SystemDialog sd(signature);
 	sd.setModal(true);
 	sd.exec();
@@ -421,20 +453,61 @@ void xnm::toolbarActionFileOpen()
 	xdv_handle ih = XdvGetParserHandle();
 	if (!XdvOpenFile(ih, (char *)file_name.toStdString().c_str()))
 	{
-		XdvPrintLog("xenom:: %s open fail..", file_name.toStdString().c_str());
-		return;
+		return false;
 	}
-
-	XdvPrintLog("xenom:: open=>%s", file_name.toStdString().c_str());
 
 	xdv::architecture::x86::context::type ctx;
 	if (XdvGetThreadContext(XdvGetParserHandle(), &ctx))
 	{
+		XdvExe("!segv.segall");
+
 		XdvExe("!dasmv.dasm -ptr:%I64x", ctx.rip);
 		XdvExe("!hexv.hex -ptr:%I64x", ctx.rip);
 		XdvExe("!thrdv.threads");
 		XdvExe("!cpuv.printctx");
 		XdvExe("!stackv.printframe");
+
+		return true;
+	}
+
+	return false;
+}
+
+void xnm::toolbarActionFileOpen()
+{
+	QString file_name = QFileDialog::getOpenFileName(this);
+	if (!openFile(file_name))
+	{
+		XdvPrintLog("xenom:: %s open fail..", file_name.toStdString().c_str());
+	}
+	else
+	{
+		XdvPrintLog("xenom:: open=>%s", file_name.toStdString().c_str());
+	}
+}
+
+void DebugCallback()
+{
+	while (1)
+	{
+		XdvWaitForDebugEvent();
+
+		xdv::architecture::x86::context::type ctx;
+		if (XdvGetThreadContext(XdvGetParserHandle(), &ctx))
+		{
+			XdvExe("!cpuv.printctx -ctx:%I64x", &ctx);
+			XdvExe("!stackv.printframe -ctx:%I64x", &ctx);
+
+			XdvExe("!dasmv.dasm -ptr:%I64x", ctx.rip);
+			XdvExe("!hexv.hex -ptr:%I64x", ctx.rip);
+			XdvExe("!thrdv.threads");
+
+			DebugBreakPointId id = XdvGetBreakPointId(XdvGetParserHandle(), ctx.rip);
+			if (id == DebugBreakPointId::SUSPEND_BREAK_POINT_ID)
+			{
+				XdvDeleteBreakPoint(XdvGetParserHandle(), ctx.rip);
+			}
+		}
 	}
 }
 
@@ -451,6 +524,14 @@ void xnm::toolbarActionProcessOpen()
 		xdv::architecture::x86::context::type ctx;
 		if (XdvGetThreadContext(XdvGetParserHandle(), &ctx))
 		{
+			xdv_handle ih = XdvGetParserHandle();
+			if (XdvInstallDebugEvent(XdvProcessId(ih)))
+			{
+				std::thread * debug_thread = new std::thread(DebugCallback);
+			}
+
+			XdvExe("!segv.segall");
+
 			XdvExe("!dasmv.dasm -ptr:%I64x", ctx.rip);
 			XdvExe("!hexv.hex -ptr:%I64x", ctx.rip);
 			XdvExe("!thrdv.threads");
@@ -528,53 +609,6 @@ void xnm::toolbarActionThreadRegister()
 	}
 }
 
-void DebugCallback()
-{
-	while (1)
-	{
-		XdvWaitForDebugEvent();
-
-		xdv::architecture::x86::context::type ctx;
-		if (XdvGetThreadContext(XdvGetParserHandle(), &ctx))
-		{
-			XdvExe("!cpuv.printctx -ctx:%I64x", &ctx); // dasmv보다 먼저 호출되어 글로벌 ctx가 세팅되도록 해야한다.
-			XdvExe("!stackv.printframe -ctx:%I64x", &ctx); // 
-
-			printf("test:: %I64x\n", ctx.rip);
-			XdvExe("!dasmv.dasm -ptr:%I64x", ctx.rip);
-			XdvExe("!hexv.hex -ptr:%I64x", ctx.rip);
-			XdvExe("!thrdv.threads");
-		}
-#if 0
-		XdvWaitForExceptionEvent();
-		DebugContextPtr dcp = (DebugContextPtr)XdvDebugSharedMemory();
-		if (!dcp)
-		{
-			continue;
-		}
-
-		if (!XdvUpdateDebuggee(XdvGetParserHandle()))
-		{
-			continue;
-		}
-
-		unsigned long long dasm = dcp->context.rip;
-		for (int i = 0; i < 5; ++i)
-		{
-			dasm = XdvGetBeforePtr(XdvGetParserHandle(), XdvGetArchitectureHandle(), dasm);
-		}
-
-		xdv::architecture::x86::context::type ctx = dcp->context;
-		XdvExe("!cpuv.printctx -ctx:%I64x", &ctx); // dasmv보다 먼저 호출되어 글로벌 ctx가 세팅되도록 해야한다.
-		XdvExe("!stackv.printframe -ctx:%I64x", &ctx); // 
-
-		XdvExe("!dasmv.dasm -ptr:%I64x", ctx.rip);
-		XdvExe("!hexv.hex -ptr:%I64x", ctx.rip);
-		XdvExe("!thrdv.threads");
-#endif
-	}
-}
-
 void xnm::toolbarActionAttachProcess()
 {
 	QMessageBox::StandardButton reply;
@@ -584,17 +618,14 @@ void xnm::toolbarActionAttachProcess()
 	if (reply == QMessageBox::Yes)
 	{
 		xdv_handle ih = XdvGetParserHandle();
-		if (XdvInstallDebugEvent(XdvProcessId(ih)))
-		{
-			std::thread * debug_thread = new std::thread(DebugCallback);
-		}
-
 		if (XdvAttachProcess(ih, XdvProcessId(ih)))
 		{
 			xdv::architecture::x86::context::type ctx;
 			if (XdvGetThreadContext(XdvGetParserHandle(), &ctx))
 			{
-				XdvExe("!cpuv.printctx -ctx:%I64x", &ctx); // dasmv보다 먼저 호출되어 글로벌 ctx가 세팅되도록 해야한다.
+				XdvExe("!segv.segall");
+
+				XdvExe("!cpuv.printctx -ctx:%I64x", &ctx);
 				XdvExe("!stackv.printframe -ctx:%I64x", &ctx);
 
 				XdvExe("!dasmv.dasm -ptr:%I64x", ctx.rip);
@@ -610,114 +641,21 @@ void xnm::toolbarActionAttachProcess()
 			QMessageBox::information(this, "xenom", "f");
 		}
 	}
-#if 0
-	DebugContextPtr dcp = (DebugContextPtr)XdvDebugSharedMemory();
-	if (dcp)
-	{
-		QMessageBox::information(this, "xenom", "It is already attached");
-		return;
-	}
-
-	QMessageBox::StandardButton reply;
-	reply = QMessageBox::question(this, "xenom", "Do you want to attach process?",
-		QMessageBox::Yes | QMessageBox::No);
-	if (reply == QMessageBox::Yes) 
-	{
-		if (XdvInjectModule(L"vehexts.dll"))
-		{
-			XdvPrintLog("xdv:: install veh engine");
-			std::thread * debug_thread = new std::thread(DebugCallback);
-
-			QMessageBox::information(this, "xenom", "Success");
-		}
-	}
-#endif
 }
 
 void xnm::toolbarActionDebugRun()
 {
 	XdvRunningProcess(XdvGetParserHandle());
-
-#if 0
-	DebugContextPtr dcp = (DebugContextPtr)XdvDebugSharedMemory();
-	if (dcp)
-	{
-		if (dcp->context.rip != 0)
-		{
-			switch (XdvGetBreakPointId(XdvGetParserHandle(), dcp->context.rip))
-			{
-			case DebugBreakPointId::SOWFTWARE_BREAK_POINT_ID:
-			case DebugBreakPointId::HARDWARE_BREAK_POINT_ID:
-				DebugContext dc = *dcp; // backup H/W bp
-				toolbarActionDebugStepInto(); // reset dr reg and int3
-				XdvReturnEvent();
-				XdvReInstallAllBreakPoint(XdvGetParserHandle()); // reinstall S/W bp
-
-				//dcp->context.dr0 = dc.context.dr0;
-				//dcp->context.dr1 = dc.context.dr1;
-				//dcp->context.dr2 = dc.context.dr2;
-				//dcp->context.dr3 = dc.context.dr3;
-				//dcp->context.dr6 = dc.context.dr6;
-				//dcp->context.dr7 = dc.context.dr7;
-				//printf("dr=>%I64x\n", dcp->context.dr0);
-
-				break;
-			}
-
-			if (dcp->last_step) // step into가 발생한 상태이다. 따라서 실행시킨 뒤, 0으로 값을 제거한다.
-			{
-				dcp->status = DebuggeeStatusId::DEBUGGEE_STATUS_EXECUTION;
-				dcp->last_step = 0;
-			}
-			else // 일반적인 수행이다. 현재 RIP가 BP가 아니라면, 다음 익셉션 핸들로 넘겨준다.
-			{
-				dcp->status = DebuggeeStatusId::DEBUGGEE_STATUS_EXECUTION;
-				switch (XdvGetBreakPointId(XdvGetParserHandle(), dcp->context.rip))
-				{
-				case DebugBreakPointId::NO_BREAK_POINT_ID:
-					dcp->status = DebuggeeStatusId::DEBUGGEE_STATUS_NEXT_HANDLE;
-					break;
-				}
-			}
-			XdvReturnEvent();
-		}
-	}
-
-	XdvReInstallAllBreakPoint(XdvGetParserHandle());
-	XdvResumeProcess(XdvGetParserHandle());
-#endif
 }
 
 void xnm::toolbarActionDebugStepInto()
 {
-#if 0
-	DebugContextPtr dcp = (DebugContextPtr)XdvDebugSharedMemory();
-	if (dcp)
-	{
-		XdvRestoreAllBreakPoint(XdvGetParserHandle()); // reset S/W bp
-		switch (XdvGetBreakPointId(XdvGetParserHandle(), dcp->context.rip)) // reset H/W bp
-		{
-		case  DebugBreakPointId::HARDWARE_BREAK_POINT_ID:
-			dcp->context.dr0 = 0;
-			dcp->context.dr1 = 0;
-			dcp->context.dr2 = 0;
-			dcp->context.dr3 = 0;
-			dcp->context.dr6 = 0;
-			dcp->context.dr7 = 0;
-			break;
-		}
-
-		dcp->status = DebuggeeStatusId::DEBUGGEE_STATUS_STEP_INTO;
-		dcp->context.efl |= 0x100; // set tf bit
-		XdvReturnEvent();
-		XdvResumeProcess(XdvGetParserHandle());
-	}
-#endif
 	XdvStepInto(XdvGetParserHandle(), nullptr, nullptr);
 	xdv::architecture::x86::context::type ctx;
 	if (XdvGetThreadContext(XdvGetParserHandle(), &ctx))
 	{
 		XdvExe("!cpuv.printctx");
+		XdvExe("!segv.segall");
 
 		XdvExe("!dasmv.dasm -ptr:%I64x", ctx.rip);
 		XdvExe("!hexv.hex -ptr:%I64x", ctx.rip);
@@ -728,16 +666,6 @@ void xnm::toolbarActionDebugStepInto()
 
 void xnm::toolbarActionDebugStepOver()
 {
-#if 0
-	DebugContextPtr dcp = (DebugContextPtr)XdvDebugSharedMemory();
-	if (dcp)
-	{
-		dcp->status = DebuggeeStatusId::DEBUGGEE_STATUS_STEP_INTO;
-		dcp->context.efl |= 0x100; //tf bit
-		XdvReturnEvent();
-		XdvResumeProcess(XdvGetParserHandle());
-	}
-#endif
 	XdvStepOver(XdvGetParserHandle(), nullptr, nullptr);
 	xdv::architecture::x86::context::type ctx;
 	if (XdvGetThreadContext(XdvGetParserHandle(), &ctx))
@@ -758,6 +686,30 @@ void xnm::toolbarActionSystemOption()
 	sd.exec();
 
 	XdvUpdateDebuggee(XdvGetParserHandle());
+}
+
+void xnm::dragEnterEvent(QDragEnterEvent *e)
+{
+	if (e->mimeData()->hasUrls()) 
+	{
+		e->acceptProposedAction();
+	}
+}
+
+void xnm::dropEvent(QDropEvent *e)
+{
+	foreach(const QUrl &url, e->mimeData()->urls()) 
+	{
+		QString file_name = url.toLocalFile();
+		if (!openFile(file_name))
+		{
+			XdvPrintLog("xenom:: %s open fail..", file_name.toStdString().c_str());
+		}
+		else
+		{
+			XdvPrintLog("xenom:: open=>%s", file_name.toStdString().c_str());
+		}
+	}
 }
 
 // -------------------------------------------
@@ -784,20 +736,19 @@ EXTS_FUNC(xenom)
 	w.loadExts(".\\exts\\parser");
 	w.loadExts(".\\exts\\viewer");
 	w.loadExts(".\\exts");
-	w.Exts();
+	//w.Exts();
 	w.addViewMenuAction();
 
 	//
 	// first callback
 	XdvExe("!stylev.style");
-	XdvExe("!dasmv.update");
-	XdvExe("!hexv.update");
-	XdvExe("!cmdv.update");
-	XdvExe("!procv.update");
-	XdvExe("!logv.update");
-	XdvExe("!thrdv.update");
-	XdvExe("!stackv.update");
-	XdvExe("!cpuv.update");
+
+	std::vector<IViewer *> vt = XdvGetViewerTable();
+	for (int i = 0; i < vt.size(); ++i)
+	{
+		std::string cmd = "!" + vt[i]->ModuleName() + ".update";
+		XdvExe((char *)cmd.c_str());
+	}
 
 	return ullvar((unsigned long long)a.exec());
 }

@@ -215,7 +215,7 @@ bool StepOver(WindowsApi *wa, DEBUG_EVENT e, unsigned long long * dest_ptr)
 	}
 
 	auto next_ptr = ptr + x86ctx.instruction_size;
-	if (!wa->SetBreakPoint(DebugBreakPointId::SOWFTWARE_BREAK_POINT_ID, next_ptr))
+	if (!wa->SetBreakPoint(DebugBreakPointId::SOFTWARE_BREAK_POINT_ID, next_ptr))
 	{
 		return StepInto(wa, e);
 	}
@@ -235,4 +235,51 @@ bool RecoverStepOverPtr(WindowsApi *wa, DEBUG_EVENT e, unsigned long long * step
 	}
 
 	return false;
+}
+
+// -------------------------------------
+// Suspend Point
+void SuspendCallback(unsigned long long ptr)
+{
+	do
+	{
+		bool result = false;
+		std::map<unsigned long, unsigned long long> thread_map;
+		XdvThreads(XdvGetParserHandle(), thread_map);
+		for (auto it : thread_map)
+		{
+			if (XdvSelectThread(XdvGetParserHandle(), it.first))
+			{
+				xdv::architecture::x86::context::type ctx;
+				if (XdvGetThreadContext(XdvGetParserHandle(), &ctx))
+				{
+					if (ctx.rip == ptr || ctx.rip == ptr + 1)
+					{
+						XdvSelectThread(XdvGetParserHandle(), it.first);
+						result = true;
+						break;
+					}
+				}
+			}
+		}
+
+		if (result)
+		{
+			break;
+		}
+
+		std::chrono::seconds dura_sec(1);
+		std::this_thread::sleep_for(dura_sec);
+	} while (true);
+
+	XdvSuspendProcess(XdvGetParserHandle());
+	xdv::architecture::x86::context::type ctx;
+	if (XdvGetThreadContext(XdvGetParserHandle(), &ctx))
+	{
+		ctx.rip = ptr;
+		XdvSetThreadContext(XdvGetParserHandle(), &ctx);
+	}
+	XdvRestoreBreakPoint(XdvGetParserHandle(), ptr);
+
+	XdvSetDebugEvent();
 }

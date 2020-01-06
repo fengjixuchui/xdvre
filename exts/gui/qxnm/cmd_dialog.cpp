@@ -3,7 +3,7 @@
 #include "GotoDialog.h"
 #include "XenomFindDialog.h"
 
-EXTS_FUNC(gotodialog)
+EXTS_FUNC(goto_dialog)
 {
 	GotoDialog gd;
 	gd.setModal(true);
@@ -12,9 +12,9 @@ EXTS_FUNC(gotodialog)
 	return ullvar(gd.getPtr());
 }
 
-EXTS_FUNC(finddialog) // argv[0] = ptr
+EXTS_FUNC(find_dialog) // argv[0] = ptr
 {
-	unsigned long long ptr = XdvToUll(argv, argc, "ptr");
+	unsigned long long ptr = toullarg("ptr");
 	if (ptr)
 	{
 		XenomFindDialog fbbd(ptr);

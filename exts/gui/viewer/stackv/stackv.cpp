@@ -5,9 +5,9 @@
 xdv_handle _current_handle;
 XENOM_ADD_INTERFACE()
 {
-	xvar var = XdvExe("!qxnm.addv -name:Stack -title:stack -callback:!stackv.cbstackv -type:txta");
+	xvar var = XdvExe("!qxnm.add_viewer -name:Stack -title:stack -callback:!stackv.cbstackv");
 	_current_handle = handlevar(var);
-	XdvExe("!qxnm.chkable -handle:%x", _current_handle);
+	XdvExe("!qxnm.set_checkable -handle:%x", _current_handle);
 
 	return _current_handle;
 }
@@ -21,7 +21,7 @@ EXTS_FUNC(cbstackv)	// argv[0] = status
 EXTS_FUNC(printframe)	// argv[0] = status
 						// ptr : unsigned long long
 {
-	unsigned long long ctx_ptr = XdvToUll(argv, argc, "ctx");
+	unsigned long long ctx_ptr = toullarg("ctx");
 	if (ctx_ptr)
 	{
 		xdv::architecture::x86::context::type * pctx = (xdv::architecture::x86::context::type *)ctx_ptr;

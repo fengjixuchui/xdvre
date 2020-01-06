@@ -15,11 +15,17 @@ class NavigationLineArea;
 class XenomTextViewer : public XenomPlainTextEdit
 {
 private:
+	typedef struct _tag_point
+	{
+		unsigned long long dest;
+		QLine current_line;
+	}point;
+
 	std::string update_command_;
 	xdv_handle viewer_handle_;
 	QAction action_[10];
 
-	SyntaxHighlighter *highlighter_;
+	SyntaxHighlighter * highlighter_;
 
 	QColor line_color_;
 	xdv::viewer::id id_;
@@ -35,8 +41,10 @@ public:
 	virtual void updateText(QString string);
 	virtual void clearText();
 
-	void addShortcutAction(char * menu, char * menu_icon, char * name, char * shortcut, char * icon);
-	void shortcutAction();
+	void addCommand(char * plugin, char * menu, char * name, char * shortcut);
+	void commandAction();
+
+	SyntaxHighlighter * Highlighter();
 
 	int blockAreaWidth();
 	void drawBlockPaintEvent(QPaintEvent *event);
